@@ -1,0 +1,305 @@
+/* public function getAllOutputKeys() */
+SELECT Ausgabe, Erklaerung, Kuerzel, Auflage, Dispoausgabe, ErscheintAmWochentag FROM Ausgabenschluessel
+
+/* public function getById($id) */
+SELECT Ausgabe, Erklaerung, Kuerzel, Auflage, Dispoausgabe, ErscheintAmWochentag FROM Ausgabenschluessel WHERE Ausgabe = $id
+
+/* public function getAllDispos() */
+SELECT * FROM Dispo
+
+/* public function getOrderByWeek($publisherId = 1, $year = 2018, $week = 1) */
+SELECT d.Woche, d.Auftrag, Kunden.Name, d.Stichwort, d.HoeheInMM, d.BreiteInSpalten, d.Ausgabenschluessel
+FROM Dispo as d
+         INNER JOIN Kunden on d.KundenIDInserent = Kunden.RecID
+WHERE d.Woche = $week
+            AND d.Jahr = $year
+            AND CONCAT (',',REPLACE(d.Ausgabenschluessel,' ',','),',') LIKE '%,$publisherId,%'
+            AND d.KeinAuftrag = 0
+            AND d.AnzeigenkategorieID != 55
+
+/* public function getWrongColourfulness() */
+SELECT Dispo.Jahr, Dispo.Woche, Dispo.Auftrag, Dispo.Stichwort, Anzeigenformate.Bezeichnung, Anzeigenkategorien.Txt, bt.VName AS editor
+            FROM Dispo
+            INNER JOIN Anzeigenformate on Anzeigenformate.RecId = Dispo.FormatID
+            INNER JOIN Anzeigenkategorien on Dispo.AnzeigenkategorieID = Anzeigenkategorien.RecID
+            INNER JOIN BenutzerTabelle AS bt ON Dispo.BenutzerID = bt.RecID
+            WHERE Dispo.Jahr >= 2018
+            AND (((Bezeichnung LIKE '_f%' OR Bezeichnung LIKE '_b%') AND Txt LIKE 'schwarz%')
+            OR (Bezeichnung LIKE '_s%' AND  (Txt LIKE 'Bunt%' OR Txt LIKE '4-farbig%')))
+            AND (AnzeigenkategorieID != 52 AND AnzeigenkategorieID != 55)
+            ORDER BY Bezeichnung, Txt
+
+/* public function getWrongDepartment() */
+SELECT d.Woche, d.Jahr, d.Auftrag, d.Stichwort, r.Bezeichnung, bt.VName AS editor
+            FROM Dispo AS d
+            INNER JOIN Ressorts AS r ON d.RessortID = r.RecID
+            INNER JOIN BenutzerTabelle AS bt ON d.BenutzerID = bt.RecID
+            WHERE Jahr >= 2018
+            AND ((RessortID NOT IN (6) AND (Rubrik > 200 AND Rubrik < 300))
+            OR (RessortID NOT IN (7, 127, 128)
+            AND (Rubrik > 100 AND Rubrik < 200)))
+
+/* public function getCashPayList($year, $week) */
+SELECT d.Jahr, d.Woche, d.Auftrag, d.Stichwort, d.HoeheInMM, d.BreiteInSpalten, d.Zahlart, d.SummeNetto, db.Alle,
+            CASE WHEN db.Alle = '' THEN 'false' ELSE 'true' END AS status
+            FROM Dispo AS d
+            INNER JOIN DispoBesonderheiten AS db on d.RecID = db.DispoID
+            WHERE (Jahr = $year AND Woche = $week)
+            AND ((FormatID IN ('370','371','372','373') AND Zahlart != '6')
+            OR (Zahlart = '6' AND FormatID NOT IN ('370','371','372','373')))
+
+/* public function getNotCurrentYearList() */
+SELECT Jahr, Woche, verlag, Auftrag, Stichwort
+            FROM Dispo
+            WHERE Abgerechnet = 0
+            AND AnzeigenkategorieID NOT IN ( '55', '51', '52', '68')
+            AND KeinAuftrag = 0
+            AND Jahr <> YEAR(GETDATE())
+            ORDER BY Jahr, Woche, Auftrag
+
+/* public function getAdPlacement($publisherId = 1,$year = 2018, $week = 1) */
+SELECT Woche, REPLACE(d.Ausgabenschluessel,' ',',') AS Anzeiger, d.Auftrag, Kunden.Name, d.Stichwort, PlazierungSeite, db.Layout AS Beschrieb , d.HoeheInMM as 'Höhe', d.BreiteInSpalten as 'Spalten'
+            FROM Dispo as d
+            INNER JOIN Kunden on d.KundenIDInserent = Kunden.RecID
+            INNER JOIN DispoBesonderheiten AS db on d.RecID = db.DispoID
+            WHERE d.Woche = $week
+            AND d.Jahr = $year
+            AND Plazierungscode <> 0
+            AND d.KeinAuftrag = 0
+            AND CONCAT (',',REPLACE(d.Ausgabenschluessel,' ',','),',') LIKE '%,$publisherId,%'
+            ORDER BY Kunden.Name ASC
+
+/* public function getAdCombo($publisherId = 1,$year = 2018, $week = 1) */
+SELECT Jahr, Woche, Auftrag, Stichwort, Stichwort2, KD_Agenturprovision AS 'RBK-Kombi', Abschlag AS 'WH-Rabatt', Anzeigenformate.Bezeichnung, Kunden.Name
+            FROM Dispo as d
+            INNER JOIN Kunden on Kunden.RecID = d.KundenIDRechnung
+            INNER JOIN Anzeigenformate ON d.FormatID = Anzeigenformate.RecId
+            WHERE (d.KundenIDRechnung=12082 OR d.KundenIDRechnung = 12198 OR d.KundenIDRechnung = 12133 OR d.KundenIDRechnung = 13126 OR d.KundenIDRechnung = 12144 OR d.KundenIDRechnung = 12135)
+            AND d.Woche = $week
+            AND d.Jahr = $year
+            AND verlag = $publisherId
+            ORDER BY d.KundenIDRechnung
+
+/* public function getYearOrderCount($publisher = 1, $year = 2018, $count = 1) */
+SELECT k.Nr AS KundenNr, d.verlag as Verlag, k.Name, k.Stadt, d.Auftrag, d.Stichwort, REPLACE(d.Ausgabenschluessel,' ',',') AS Anzeiger, k.Telefonnummer
+            FROM Dispo AS d
+            JOIN (SELECT MIN(recid) MinRecID, Auftrag FROM Dispo WHERE Jahr = $year GROUP BY Auftrag having count(*) >= $count) h ON d.RecID = h.MinRecID
+            JOIN Kunden k ON d.KundenIDInserent = k.RecID
+            JOIN Ressorts r ON d.RessortID = r.RecID
+            WHERE d.Ausgabenschluessel != '9'
+            AND d.Jahr = $year
+            AND NOT (d.KundenIDRechnung=12082 OR d.KundenIDRechnung = 12198 OR d.KundenIDRechnung = 12133 OR d.KundenIDRechnung = 13126 OR d.KundenIDRechnung = 12144 OR d.KundenIDRechnung = 12135 OR d.KundenIDRechnung = 12035 OR d.KundenIDRechnung = 11997)
+            AND d.AnzeigenkategorieID != 55
+            AND d.KeinAuftrag = 0
+            AND d.verlag = $publisher
+            ORDER BY d.RessortID, k.Name, d.Auftrag, d.Woche
+
+/* public function getAdvisoryCommissionList($year = 2018, $yearBack = 1) */
+SELECT d.Jahr, d.Woche, d.Auftrag, d.Ausgabenschluessel AS 'Anzeiger', ki.Name AS 'Kunde', d.Stichwort AS 'Betreff', d.KD_Agenturprovision AS 'BK', k.Name AS 'KombiPartner', bt.VName AS 'editor'
+            FROM Dispo AS d
+            INNER JOIN Kunden AS k ON d.KundenIDRechnung = k.RecID
+            INNER JOIN Kunden AS ki ON d.KundenIDInserent = ki.RecID
+            INNER JOIN BenutzerTabelle AS bt ON d.BenutzerID = bt.RecID
+            WHERE (((d.Ausgabenschluessel = '1 7' OR d.Ausgabenschluessel = '7 1') AND d.KD_Agenturprovision > 20 AND $sqlYear)
+            OR ((d.Ausgabenschluessel = '1' OR d.Ausgabenschluessel = '7') AND d.KD_Agenturprovision > 28 AND $sqlYear))
+            OR ((LEN(d.Ausgabenschluessel) - LEN(REPLACE(d.Ausgabenschluessel, ' ', '')) + 1) > 1
+            AND k.Nr = 10068 AND d.KD_Agenturprovision = 19 AND d.Abgerechnet = 0 AND $sqlYear)
+            ORDER BY d.KD_Agenturprovision ASC
+
+/* public function getReservationList($publisherId = 1,$clientId ,$year = 2018, $week) */
+SELECT d.Jahr, d.Woche, d.Auftrag, d.Auftragsart, k.Name, d.Stichwort, db.Layout AS Beschrieb, REPLACE(d.Ausgabenschluessel,' ',',') AS Anzeiger, r.Bezeichnung
+            FROM Dispo AS d
+            inner join Kunden AS k on d.KundenIDInserent = k.RecID
+            LEFT JOIN DispoBesonderheiten db on d.RecID = db.DispoID
+            LEFT JOIN Ressorts AS r on r.RecID = d.RessortID
+            WHERE d.Jahr = '$year' AND d.Plazierungscode <> 0 AND d.KeinAuftrag IN (0, 1, 2) AND d.Auftragsart IN (0, 1, 2)
+            $clientSQL
+            $weekSQL
+            AND CONCAT (',',REPLACE(d.Ausgabenschluessel,' ',','),',') LIKE '%,$publisherId,%'
+            AND d.Stichwort NOT LIKE '%Kopf Titelseite%' AND db.Layout NOT LIKE '%Impressum%' AND d.Stichwort NOT LIKE 'Bestellschein' AND db.Layout NOT LIKE 'Sudoku'
+            ORDER BY CASE WHEN r.Bezeichnung = 'Titelseite' THEN 100
+            WHEN r.Bezeichnung LIKE '1.%Seite%' THEN 200
+            WHEN r.Bezeichnung LIKE '2.%Seite%' THEN 203
+            WHEN r.Bezeichnung LIKE '3.%Seite%' THEN 204
+            WHEN r.Bezeichnung LIKE '4.%Seite%' THEN 205
+            WHEN r.Bezeichnung LIKE '5.%Seite%' THEN 206
+            WHEN r.Bezeichnung LIKE '6.%Seite%' THEN 207
+            WHEN r.Bezeichnung LIKE '7.%Seite%' THEN 208
+            WHEN r.Bezeichnung LIKE '8.%Seite%' THEN 209
+            WHEN r.Bezeichnung LIKE '9.%Seite%' THEN 210
+            WHEN r.Bezeichnung LIKE '10.%Seite%' THEN 211
+            WHEN r.Bezeichnung LIKE '11.%Seite%' THEN 212
+            WHEN r.Bezeichnung LIKE '12.%Seite%' THEN 213
+            WHEN r.Bezeichnung LIKE '13.%Seite%' THEN 214
+            WHEN r.Bezeichnung LIKE '14.%Seite%' THEN 215
+            WHEN r.Bezeichnung LIKE '15.%Seite%' THEN 216
+            WHEN r.Bezeichnung = 'Veranstaltungen' THEN 300
+            WHEN r.Bezeichnung = 'Allgemein' THEN 400
+            WHEN r.Bezeichnung = 'Panorama' THEN 500
+            WHEN r.Bezeichnung = 'Immobilien' THEN 600
+            WHEN r.Bezeichnung = 'Letzte Seite' THEN 999
+            ELSE 998 END ASC, db.Layout DESC, k.Name DESC
+
+/* public function checkReservation() */
+SELECT d.Jahr, d.Woche, k.Name, d.Auftrag, db.Layout, bt.VName AS editor
+            FROM Dispo AS d
+            INNER JOIN Kunden AS k on d.KundenIDInserent = k.RecID
+            INNER JOIN DispoBesonderheiten db on d.RecID = db.DispoID
+            INNER JOIN BenutzerTabelle AS bt ON d.BenutzerID = bt.RecID
+            WHERE d.Plazierungscode <> 0
+            AND d.KeinAuftrag IN (0, 1, 2)
+            AND d.Auftragsart IN (0, 1, 2)
+            AND d.Stichwort NOT LIKE \'%Kopf Titelseite%\' AND db.Layout NOT LIKE \'%Impressum%\'
+            AND d.Stichwort NOT LIKE \'Bestellschein\' AND db.Layout NOT LIKE \'Sudoku\'
+            AND CONCAT (\',\',REPLACE(d.Ausgabenschluessel,\' \',\',\'),\',\') LIKE \'%,1,%\'
+            AND db.Layout LIKE \'%1. recht%\'
+            AND d.Jahr > 2018
+            AND CASE WHEN (
+                SELECT COUNT(sdb.Layout)
+                FROM Dispo AS sd
+                LEFT JOIN DispoBesonderheiten sdb on sd.RecID = sdb.DispoID
+                WHERE d.Woche = sd.Woche AND d.Jahr = sd.Jahr
+                AND sd.Plazierungscode <> 0
+                AND sd.KeinAuftrag IN (0, 1, 2)
+                AND sd.Auftragsart IN (0, 1, 2)
+                AND d.Stichwort NOT LIKE \'%Kopf Titelseite%\' AND db.Layout NOT LIKE \'%Impressum%\'
+                AND d.Stichwort NOT LIKE \'Bestellschein\' AND db.Layout NOT LIKE \'Sudoku\'
+                AND sdb.Layout LIKE \'%1. recht%\'
+            ) > 1 THEN 1 ELSE 0 END = 1
+            ORDER BY d.Jahr ASC , d.Woche ASC, k.Name DESC
+
+/* public function getSameResortList($publisherId = 1,$year = 2018, $week) */
+SELECT d.Jahr, d.Woche, er.Ausgabenschluessel AS Anzeiger,  k.Nr, d.Auftrag, k.Name, Stichwort, r.Bezeichnung, db.Layout AS Beschrieb,
+                (SELECT TOP 1 CASE WHEN (ABS(LogSeiten.Nummer - log.Nummer)) <= 1 THEN 1 END
+                FROM Dispo
+                INNER JOIN Kunden ON Dispo.KundenIDInserent = Kunden.RecID
+                INNER JOIN Erscheinungen ON Dispo.RecID = Erscheinungen.AuftragID AND Erscheinungen.Ausgabenschluessel = $publisherId
+                INNER JOIN LogSeiten ON Erscheinungen.SeiteID = LogSeiten.SeiteID
+                WHERE Kunden.Nr = k.Nr
+                AND (1 = CASE WHEN (d.RessortID IN (7,127,128) AND Dispo.RessortID IN (7,127,128)) THEN 1 ELSE 0 END OR Dispo.RessortID = d.RessortID)
+                AND Dispo.Woche = $week
+                AND Dispo.Jahr = $year
+                AND Dispo.Auftrag != d.Auftrag
+                AND CONCAT (',',REPLACE(Dispo.Ausgabenschluessel,' ',','),',') LIKE '%,$publisherId,%'
+                ORDER BY ABS(LogSeiten.Nummer - log.Nummer) ASC) AS distAlert,
+                log.Nummer AS Seitenzahl
+                FROM Dispo AS d
+                INNER JOIN Kunden AS k ON d.KundenIDInserent = k.RecID
+                LEFT JOIN DispoBesonderheiten db on d.RecID = db.DispoID
+                LEFT JOIN Ressorts AS r ON r.RecID = d.RessortID
+                INNER JOIN Erscheinungen AS er ON d.RecID = er.AuftragID
+                INNER JOIN LogSeiten as log ON er.SeiteID = Log.SeiteID
+                WHERE er.Ausgabenschluessel = $publisherId
+                AND d.Woche = $week
+                AND d.Jahr = $year
+                AND k.Nr != 10000
+                AND (SELECT COUNT(Kunden.Nr)
+                FROM Dispo
+                INNER JOIN Kunden ON Dispo.KundenIDInserent = Kunden.RecID
+                WHERE Kunden.Nr = k.Nr
+                AND (1 = CASE WHEN (d.RessortID IN (7,127,128) AND Dispo.RessortID IN (7,127,128)) THEN 1 ELSE 0 END OR Dispo.RessortID = d.RessortID)
+                AND Dispo.Woche = $week
+                AND Dispo.Jahr = $year
+                AND Dispo.KeinAuftrag = 0
+                AND CONCAT (',',REPLACE(Dispo.Ausgabenschluessel,' ',','),',') LIKE '%,$publisherId,%') > 1
+                ORDER BY k.Nr ASC, log.Nummer ASC
+
+/* public function resetAdStatus($id,$year, $week) */
+/* ACHTUNG UPDATE -> Select durchführen zum Prüfen */
+UPDATE DispoPA SET Status = 2 WHERE Auftrag = $id AND Jahr = $year AND Woche = $week
+
+/* public function getPreReleasedOrder($orderId) */
+SELECT DispoPa.Woche, DispoPa.Jahr, DispoPa.Auftrag, Erscheinungen.Ausgabenschluessel, Ausgabenschluessel.Erklaerung, DispoPa.Status
+                FROM DispoPa
+                INNER JOIN Erscheinungen ON Erscheinungen.AuftragID = DispoPA.StehsatzVonRecID
+                INNER JOIN Ausgabenschluessel ON Ausgabenschluessel.ausgabe = Erscheinungen.Ausgabenschluessel
+                WHERE DispoPA.Auftrag = $orderId
+
+/* public function getPublicationsByOrderId($orderId) */
+SELECT Dispo.Woche, Dispo.Jahr, Erscheinungen.Ausgabenschluessel, Ausgabenschluessel.Erklaerung,  Dispo.Auftrag, Dispo.Stichwort, LogSeiten.Nummer AS Seitenzahl "
+                . "FROM Erscheinungen "
+                . "INNER JOIN LogSeiten ON Erscheinungen.SeiteID = LogSeiten.SeiteID "
+                . "INNER JOIN Dispo ON Dispo.RecID = Erscheinungen.AuftragID "
+                . "INNER JOIN Ausgabenschluessel ON Ausgabenschluessel.ausgabe = Erscheinungen.Ausgabenschluessel "
+                . "WHERE Dispo.Auftrag = $orderId
+
+/* public function getPublicationsByClientId($publisherId = 1,$clientId = 0, $year = 2018, $week = 1) */
+SELECT CONCAT (',',REPLACE(Dispo.Ausgabenschluessel,' ',','),','), Dispo.Woche, Dispo.Jahr, Erscheinungen.Ausgabenschluessel, Ausgabenschluessel.Erklaerung, Dispo.Auftrag, Dispo.Stichwort2 AS Rechnungsvermerk, Dispo.Stichwort, Kunden.Name, LogSeiten.Nummer AS Seitenzahl "
+    . "FROM Erscheinungen "
+    . "INNER JOIN LogSeiten ON Erscheinungen.SeiteID = LogSeiten.SeiteID "
+    . "INNER JOIN Dispo ON Dispo.RecID = Erscheinungen.AuftragID "
+    . "INNER JOIN Kunden ON Kunden.RecID = Dispo.KundenIDInserent "
+    . "INNER JOIN Ausgabenschluessel ON Ausgabenschluessel.ausgabe = Erscheinungen.Ausgabenschluessel "
+    . "WHERE Kunden.Nr = $clientId "
+    . "AND Erscheinungen.Ausgabenschluessel = $publisherId "
+    . "AND Dispo.Woche = $week "
+    . "AND Dispo.Jahr = $year "
+    . "ORDER BY Seitenzahl
+
+/* public function getImmoMisplacements($publisherId = 1, $year = 2018, $week = 1) */
+SELECT Dispo.Woche, Dispo.Jahr, Ausgabenschluessel.Erklaerung, log.Nummer AS Seitenzahl "
+                . "FROM Erscheinungen "
+                . "INNER JOIN LogSeiten as log ON Erscheinungen.SeiteID = Log.SeiteID "
+                . "INNER JOIN Dispo ON Dispo.RecID = Erscheinungen.AuftragID "
+                . "INNER JOIN Ausgabenschluessel ON Ausgabenschluessel.ausgabe = Erscheinungen.Ausgabenschluessel "
+                . "WHERE Erscheinungen.Ausgabenschluessel = $publisherId "
+                . "AND Dispo.Woche = $week "
+                . "AND Dispo.Jahr = $year "
+                . "AND (((SELECT COUNT(DISTINCT d.RessortID) as count "
+                . "FROM Erscheinungen as er "
+                . "INNER JOIN Dispo as d on d.RecID = er.AuftragID "
+                . "INNER JOIN LogSeiten as l on er.SeiteID = l.SeiteID "
+                . "WHERE l.Nummer = log.Nummer AND d.RessortID IN (127, 128) AND d.Woche = $week AND d.Jahr = $year AND er.Ausgabenschluessel = $publisherId) = 2) "
+                . "OR (Dispo.RessortID IN (127, 128, 7) AND Dispo.AnzeigenkategorieID = 88)) "
+                . "GROUP BY Dispo.Woche, Dispo.Jahr, Ausgabenschluessel.Erklaerung, log.Nummer "
+                . "ORDER BY Seitenzahl
+
+/* public function getFindBillText($search = '') */
+SELECT d.Woche, d.Jahr, e.Ausgabenschluessel, d.Auftrag, d.Stichwort, d.Stichwort2 "
+            . "FROM Erscheinungen AS e "
+            . "INNER JOIN Dispo AS d on d.RecID = e.AuftragID "
+            . "WHERE (d.Stichwort2 LIKE '%$search%' OR d.Stichwort LIKE '%$search%') "
+            . "AND d.Jahr >= YEAR(DATEADD(yy, -2, getdate())) "
+            . "ORDER BY d.Jahr DESC, d.Woche DESC
+
+/* public function getPublicationDateListFrom($publisherId = 1, $year) */
+SELECT ek.ObjektNr, ek.Jahr, ek.Woche, ek.KaufmaennischesDatum, ek.Erscheinungsdatum "
+            . " FROM Erscheinungskalender AS ek "
+            . "WHERE ek.ObjektNr = '$publisherId' AND ek.Jahr >= '$year' "
+            . "AND ek.Erscheinungsdatum > '1900-01-01' "
+            . "AND ek.Erscheinungsdatum <= getdate()
+
+/* public function getAdSpaceFilling($publisherId = 1, $year) */
+SELECT e.FuellerUndKoepfeNr as number, e.Jahr, f.BreiteInSpalten as Spalte, FLOOR(CONVERT(int, f.HoeheInMM)) as Hoehe, f.Stichwort, "
+
+                . "(SELECT count(er.fuellerUndKoepfeNr) "
+                . "FROM ErscheinungenFuellerUndKoepfe AS er "
+                . "JOIN FuellerUndKoepfe AS  fu ON fu.Nr = er.FuellerUndKoepfeNr "
+                . "WHERE er.FuellerUndKoepfeNr = e.FuellerUndKoepfeNr AND er.Jahr = e.Jahr "
+                . "AND er.Ausgabenschluessel = e.Ausgabenschluessel "
+                . "GROUP BY er.FuellerUndKoepfeNr) AS count, "
+
+                . "(SELECT count(farbe.RecID) "
+                . "FROM FuellerUndKoepfeFarben as farbID "
+                . "LEFT JOIN Farben farbe on farbID.FarbenID = farbe.RecID "
+                . " WHERE farbID.FuellerUndKoepfeNr = f.Nr  "
+                . "AND farbID.FarbenID IS NOT NULL) AS Farbig "
+
+            . "FROM ErscheinungenFuellerUndKoepfe AS e "
+            . "JOIN FuellerUndKoepfe AS  f ON f.Nr = e.FuellerUndKoepfeNr "
+            . "WHERE Jahrbis IS NULL AND e.Jahr = '$year' "
+            . "AND e.Ausgabenschluessel = '$publisherId' "
+            . "GROUP BY e.FuellerUndKoepfeNr , e.Jahr, f.BreiteInSpalten, f.HoeheInMM , f.Stichwort, e.Ausgabenschluessel, f.Nr "
+            . "ORDER BY count DESC
+
+/* public function getClientsOutsideRegion($publisherId = 1, $year, $week) */
+SELECT k.Name, k.Strasse, k.PostFachNr as Postfach, k.Postleitzahl as PLZ, k.Stadt AS Ort "
+            . "FROM Kunden as k "
+            . "LEFT JOIN MerkmalsZuordnungen AS mz ON mz.KundenID = k.RecID AND mz.MerkmalNr = 136 "
+            . "INNER JOIN "
+            . "(SELECT kd.RecID "
+            . "FROM Kunden as kd "
+            . "INNER JOIN Dispo AS d ON d.KundenIDInserent = kd.RecID "
+            . "WHERE d.Jahr = $year AND d.Woche = $week AND d.Auftragsart = 0 "
+            . "AND CONCAT (',',REPLACE(d.Ausgabenschluessel,' ',','),',') LIKE '%,$publisherId,%' "
+            . "AND LEN(kd.Postleitzahl) = 4 
